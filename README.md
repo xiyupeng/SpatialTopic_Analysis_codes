@@ -1,2 +1,2 @@
-# Topic_analysis_on_MIF
+# SpatialTopic Analysis Codes
 Analysis codes on multiplexed imaging data for published paper
