@@ -1,0 +1,104 @@
+---
+title: "MIF_analysis"
+format: html
+editor: visual
+---
+
+## MIF Dataset
+
+```{r}
+library(Seurat)
+library(ggplot2)
+
+### read the test dataset
+tissue<-readRDS(file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mif/MIF_example.rds")
+
+tissue$type<-tissue$majortypes
+```
+
+```{r}
+coords <- CreateFOV(
+    data.frame(X = tissue$X,Y = tissue$Y),
+    type = c("centroids"),assay = "protein"
+)
+tissue[["spatial"]] <- coords
+
+
+ImageDimPlot(tissue, fov = "spatial", group.by = "majortypes", axes = FALSE, 
+                   size = 1, dark.background = F,flip_xy = FALSE) 
+
+#ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/celltype.png",width = 36,height = 36, units = "in")
+```
+
+## SpaTopic
+
+```{r,eval=FALSE}
+### maybe we could select all soft tissue samples
+select_column<-function(data){
+  data_select<-as.data.frame(cbind(data$sample, data$X, data$Y, data$majortypes))
+  colnames(data_select)<-c("image","X","Y","type")
+  data_select
+}
+## for only one sample
+dataset<-list(select_column(tissue))
+
+## around 100 cells per region
+system.time(gibbs.res<-SpaTopic_inference(dataset, ntopics = 5, sigma = 50, region_radius = 300, burnin = 2000))
+
+save(gibbs.res,file = "~/Documents/Research/github/SpaTopic_benchmarking/results/figures/mif_topics.rdata")
+```
+
+## visualization
+
+```{r}
+load("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/mif_topics.rdata")
+
+prob<-as.matrix(gibbs.res$Z.trace)
+tissue$Topic<-as.factor(apply(prob,1,which.max))
+
+levels(tissue$Topic)<-c("Topic1:tumor", "Topic2:CD4 immune zone", "Topic3:stroma","Topic4:immune-enriched tumor-stroma boundry","Topic5:tertiary lymphoid structures")
+ImageDimPlot(tissue, fov = "spatial", group.by = "Topic", axes = FALSE, 
+                   size = 1, dark.background = F,flip_xy = FALSE) 
+
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/mif_topics.png",width = 36,height = 36, units = "in")
+```
+
+```{r}
+### crop images
+crop1 <- Crop(tissue[["spatial"]], y = c(23000,27000), x = c(31000,35000))
+tissue[["zoom1"]] <- crop1
+ImageDimPlot(tissue, fov = "zoom1", group.by = "Topic", axes = FALSE, 
+                   size = 1, dark.background = F,flip_xy = FALSE) +NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/mif_topics_crop1.png",width = 6,height = 6, units = "in")
+```
+
+```{r}
+### crop images
+crop1 <- Crop(tissue[["spatial"]], y = c(30000,34000), x = c(42000,46000))
+tissue[["zoom2"]] <- crop1
+ImageDimPlot(tissue, fov = "zoom2", group.by = "Topic", axes = FALSE, 
+                   size = 1, dark.background = F,flip_xy = FALSE) +NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/mif_topics_crop2.png",width = 6,height = 6, units = "in")
+```
+
+```{r}
+### crop images
+crop1 <- Crop(tissue[["spatial"]], y = c(33000,37000), x = c(14000,18000))
+tissue[["zoom3"]] <- crop1
+ImageDimPlot(tissue, fov = "zoom3", group.by = "Topic", axes = FALSE, 
+                   size = 1, dark.background = F,flip_xy = FALSE) +NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/mif_topics_crop3.png",width = 6,height = 6, units = "in")
+```
+
+```{r}
+new_labels <- c("3:Bcell" = "B cell",
+                "5:CD8T" = "CD8 T cell",
+                "4:CD4T" = "CD4 T cell",
+                "6:Treg" = "Treg",
+                "2:Macrophage" = "Macrophage",
+                "1:tumor/epi" = "Tumor/Epithelial",
+                "7:other" = "Other")
+m <- as.data.frame(gibbs.res$Beta)
+rownames(m)<-new_labels[rownames(m)]
+pheatmap::pheatmap(m)
+```

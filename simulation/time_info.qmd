@@ -1,0 +1,74 @@
+---
+title: "time information"
+format: html
+editor: visual
+---
+
+#### user time
+
+```{r}
+library(ggplot2)
+
+# Create the data frame
+timing_data <- data.frame(
+  Dataset = c("NSCLC", "NSCLC", "NSCLC", "NSCLC", "NSCLC", "NSCLC",
+              "Mouse spleen", "Mouse spleen", "Mouse spleen", "Mouse spleen", "Mouse spleen"),
+  ncells = c(100149, 100149, 100149, 100149, 100149, 100149,
+             701012, 701012, 701012, 701012, 701012),
+  n_images = c(1, 1, 1, 1, 1, 1, 9, 9, 9, 9, 9),
+  Method = c("SpatialTopic", "Seurat-v5", "Spatial-LDA", "CytoCommunity", "BankSY", "UTAG",
+             "SpatialTopic", "Seurat-v5", "Spatial-LDA", "BankSY", "UTAG"),
+  Time = c("1min", "2.8min", "123min", "1800min", "9min", "8min",
+           "13min", "14min", "720", "155min", "198min")
+)
+
+timing_data$Time <- as.numeric(gsub("[^0-9.]", "", timing_data$Time))
+timing_data$Method <- factor(timing_data$Method, levels = c("SpatialTopic", "Seurat-v5", "BankSY", "UTAG", "Spatial-LDA", "CytoCommunity"))
+timing_data$Dataset <- factor(timing_data$Dataset, levels = c("NSCLC","Mouse spleen"))
+
+library(ggsci)
+my_color<- pal_npg("nrc", alpha = 0.9)(6)
+# Plot the data using ggplot2
+library(ggpubr)
+ggbarplot(timing_data, "Method","Time",facet.by = "Dataset",fill = "Method",yscale = "log2",xlab = "Method",ylab = "Time (min)",palette = my_color,legend = "right")+ facet_wrap(~ Dataset, labeller = labeller(Dataset = function(x) paste(x, "\nCells:", unique(timing_data$ncells[timing_data$Dataset == x]), "Images:", unique(timing_data$n_images[timing_data$Dataset == x]))))+ theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+#### Simulation 2 Speed
+simulation_list<-list()
+
+for (i in 1:6){
+  simulation_list[[i]]<-readRDS(file = paste0("~/Documents/Research/github/SpaTopic_benchmarking/simulation/rerun/Simulation_figure_s50_r60_nint10_",i,"times_new.rds"))
+}
+
+## run time
+grep_time<-function(time_list){
+  re<-as.data.frame(time_list)[1,]
+  return(as.numeric(re))
+}
+time_lda<-lapply(simulation_list, function(x) grep_time(x[["time_lda"]]))
+time_knn<-lapply(simulation_list, function(x) grep_time(x[["time_knn"]]))
+
+# Converting lists to data frames
+library(tidyverse)
+df_lda <- as.data.frame(do.call(cbind, time_lda))
+df_knn <- as.data.frame(do.call(cbind, time_knn))
+df_lda$Method <- 'SpatialTopic'
+df_knn$Method <- 'Seurat-v5'
+df_combined <- bind_rows(df_lda, df_knn)
+
+long_df <- pivot_longer(
+  df_combined,
+  cols = -Method,  # Select all columns except for 'Method' for melting
+  names_to = "Condition",
+  values_to = "Time",
+  names_prefix = ".*Cond"  # Remove common prefix in condition names, if needed
+)
+
+long_df$Size<-rep(c("10k","40k","90k","160k","250k","360k"),10)
+long_df$Method <- factor(long_df$Method, levels = c("SpatialTopic", "Seurat-v5"))
+
+my_color<- pal_npg("nrc", alpha = 0.9)(6)
+library(ggpubr)
+ggline(long_df,x = "Size", y = "Time", color = "Method",size = 1.5,palette = my_color,add = "mean_se",legend = "right")+ylab("Usr time (s)")+xlab("Number of cells")
+```

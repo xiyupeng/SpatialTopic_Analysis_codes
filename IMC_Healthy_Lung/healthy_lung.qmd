@@ -1,0 +1,135 @@
+---
+title: "healthy lung"
+format: html
+editor: visual
+---
+
+```{r}
+library(Seurat) # v5
+library(ggplot2)
+library(SpaTopic)
+library(sf)
+## convert from h5ad file to seurat object
+## https://github.com/cellgeni/sceasy
+## devtools::install_github("cellgeni/schard")
+library(schard)
+
+## read Seurat object from h5ad2
+healthy_lung = schard::h5ad2seurat('/Users/xiyupeng/Documents/Research/github/SpaTopic_benchmarking/data/healthy_lung/healthy_lung_adata_labeled.h5ad')
+
+## name of images (use unique instead of levels because of the order)
+images<-unique(healthy_lung$roi)
+
+## convert to input of SpaTopic
+dataset_lung<-list()
+for(i in images){
+  subset<-subset(healthy_lung,roi == i)
+  coords <- CreateFOV(
+    data.frame(X = subset$X_centroid,Y = subset$Y_centroid),
+    type = c("centroids"),assay = "RNA"
+  )
+  subset[[i]] <- coords
+  dataset_lung[[i]] <- Seurat5obj_to_SpaTopic(object = subset, group.by = "cell type",image = i)
+}
+
+levels(factor(healthy_lung$domain))
+
+
+ntopics<-4
+sigma<-5
+radius<-60
+nint<-200
+```
+
+```{r,eval=FALSE}
+## Run SpaTopic
+system.time(gibbs.res<-SpaTopic_inference(dataset_lung, ntopics = ntopics, sigma = sigma, region_radius = radius, ninit = nint))
+
+save(gibbs.res, file = 
+paste0("/Users/xiyupeng/Documents/Research/github/SpaTopic_benchmarking/data/healthy_lung/gibbs_result_spatopic.rdata"))
+```
+
+```{r}
+load(file = 
+paste0("/Users/xiyupeng/Documents/Research/github/SpaTopic_benchmarking/data/healthy_lung/gibbs_result_spatopic.rdata"))
+
+## spatopic topic assignment
+prob<-as.matrix(gibbs.res$Z.trace)
+topic<-as.factor(apply(prob,1,which.max))
+topic<-as.factor(as.numeric(topic))
+healthy_lung$Topic<-topic
+healthy_lung$domain<-as.factor(healthy_lung$domain)
+healthy_lung$`cell type`<-as.factor(healthy_lung$`cell type`)
+healthy_lung$`UTAG Label_leiden_0.3`<-as.factor(healthy_lung$`UTAG Label_leiden_0.3`)
+
+#View(healthy_lung@meta.data)
+library(Polychrome)
+palatte20<-glasbey.colors(20)[-1]
+names(palatte20)<-as.character(0:18)
+
+## for every individual images
+figures<-list()
+ARIs<-list()
+
+for(id in 1:26){
+  
+  ### split the object into small objects, each for every image
+  image_id<-gsub("-", ".", images[id])
+  subset<-subset(healthy_lung,roi == images[id])
+  coords <- CreateFOV(
+    data.frame(X = subset$X_centroid,Y = subset$Y_centroid),
+    type = c("centroids"),assay = "RNA"
+  )
+  subset[[image_id]] <-coords
+  
+  ## make figures
+  subset$celltype<-subset$`cell type`
+  p0<-ImageDimPlot(subset, fov = image_id, group.by = "celltype", axes = FALSE, 
+                   size = 1, dark.background = F,cols = "glasbey") + ggtitle("Celltype") 
+  p1<-ImageDimPlot(subset, fov = image_id, group.by = "Topic", axes = FALSE, 
+                             size = 1, dark.background = F,cols = "glasbey") + ggtitle("SpatialTopic") 
+  ### true domain
+  p2<-ImageDimPlot(subset, group.by = "domain", axes = FALSE, dark.background = F,size = 1,cols = "glasbey")+ggtitle("Manual") 
+  ## utag domain
+  subset$UTAG<-subset$`UTAG Label_leiden_0.3`
+  p3<-ImageDimPlot(subset, group.by = "UTAG", axes = FALSE, dark.background = F,size = 1,cols = palatte20)+ggtitle("UTAG")
+  
+  library(patchwork)
+  figures[[id]]<-wrap_plots(p0,p2,p1,p3,nrow = 4)
+  
+  library(mclust)
+  ARIs[[id]]<-c(adjustedRandIndex(subset$domain,subset$celltype),
+                adjustedRandIndex(subset$domain,subset$Topic),
+                adjustedRandIndex(subset$domain,subset$UTAG),
+                adjustedRandIndex(subset$domain,subset$`UTAG Label`))
+}
+
+ARIs<-unlist(ARIs)
+dim(ARIs)<-c(4,26)
+rownames(ARIs)<-c("celltype", "SpatialTopic","UTAG","utag_label")
+apply(ARIs,1,mean)
+```
+
+```{r,fig.width=6,fig.height=12}
+for(i in 1:26){
+  print(i)
+  print(figures[[i]])
+}
+```
+
+```{r}
+library(ggsci)
+library(tidyverse)
+ARIs<-as.data.frame(t(ARIs))
+data_long <- pivot_longer(ARIs, cols = everything(), names_to = "Method", values_to = "ARI",names_prefix = "Column")
+data_long$Method<-as.factor(data_long$Method)
+levels(data_long$Method)<-c("Celltype","SpatialTopic","UTAG","UTAG_relabel")
+library(ggpubr)
+ggboxplot(data_long,x = "Method",y = "ARI", fill = "Method",legend = "right")+scale_fill_npg()+ylab("Adjusted Rand Index")
+
+m <- as.data.frame(gibbs.res$Beta)
+rowname<-levels(healthy_lung$`cell type`)
+colnames(m)<-paste0("topic",1:4)
+rownames(m)<-rowname
+pheatmap::pheatmap(m)
+```

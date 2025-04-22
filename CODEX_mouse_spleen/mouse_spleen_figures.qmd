@@ -1,0 +1,428 @@
+---
+title: "mouse_spleen_figures"
+format: html
+editor: visual
+---
+
+## Prepare figures
+
+```{r}
+load(file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/mouse_spleen_with_result.rdata")
+```
+
+### Images
+
+Overview of images of SpaTopic
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(Polychrome)
+library(patchwork)
+library(mclust)
+```
+
+```{r}
+palatte10<-glasbey.colors(10)
+names(palatte10)<-as.character(1:10)
+palatte<- c("#0000FFFF","#FF0000FF","#00FF00FF","#009FFFFF","#FF00B6FF","#005300FF","#FFD300FF")
+names(palatte)<-as.character(1:7)
+p_spatopic<-NULL
+for(i in names(spleen_objects)){
+  object<-spleen_objects[[i]]
+  p_spatopic[[i]]<-ImageDimPlot(object, fov = i, group.by ="Topic_r150_sigma20_K6",axes = FALSE, dark.background = F,cols = palatte) + theme(axis.line=element_blank(),
+          axis.text.x=element_blank(),
+          axis.text.y=element_blank(),
+          axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),
+          legend.position="none",
+          legend.title=element_blank(),
+          panel.background=element_blank(),
+          panel.border=element_blank(),
+          panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          plot.margin = unit(c(0, 0, 0, 0), "null"),
+          plot.background= element_rect(fill = "white"))
+}
+```
+
+```{r}
+wrap_plots(p_spatopic,nrow = 3,guides = "collect")
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen.png",width = 15,height = 15, units = "in")
+## plot legend
+new_object<-spleen_objects[[1]]
+new_object$SpaTopic<-as.factor(new_object$Topic_r150_sigma20_K6)
+levels(new_object$SpaTopic)<-c("Topic1:red pulp", "Topic2:PALS", "Topic3:B-follicle","Topic4:CD106+ immune zone","Topic5:B220+ DN T cell zone","Topic6:Erythroblastic zone")
+palatte<- c("#0000FFFF","#FF0000FF","#00FF00FF","#009FFFFF","#FF00B6FF","#005300FF","#FFD300FF")
+names(palatte)<-levels(new_object$SpaTopic)
+ImageDimPlot(new_object, fov = "BALBc.1", group.by ="SpaTopic",axes = FALSE, dark.background = F,cols = palatte)
+```
+
+-   Compare the first three figures with other methods
+
+```{r}
+library(patchwork)
+## 24 colors
+palatte20<-glasbey.colors(25)[-1]
+names(palatte20)<-as.character(0:23)
+## 10 colors
+palatte10<-glasbey.colors(10)
+names(palatte10)<-as.character(1:10)
+## 7 color
+palatte<- c("#0000FFFF","#FF0000FF","#00FF00FF","#009FFFFF","#FF00B6FF","#005300FF","#FFD300FF")
+names(palatte)<-as.character(1:7)
+
+p_spatopic<-NULL
+p_spatopic_v2<-NULL
+p_spatopic_v3<-NULL
+p_seurat<-NULL
+p_spatial_lda<-NULL
+p_utag<-NULL
+p_Banksy<-NULL
+p_true<-NULL
+p_celltype<-NULL
+for(i in names(spleen_objects)){
+  object<-spleen_objects[[i]]
+  object$cluster<-as.factor(object$cluster)
+  ## by default, SpaTopic was run with r=300
+   p_spatopic[[i]]<-ImageDimPlot(object, fov = i, group.by = "Topic_r150_sigma20_K6", axes = FALSE, dark.background = F, cols = palatte) + ggtitle(i)
+   p_spatopic_v2[[i]]<-ImageDimPlot(object, fov = i, group.by = "Topic_r150_sigma20_K9", axes = FALSE, dark.background = F, cols = palatte10) + ggtitle(i)
+    p_spatopic_v3[[i]]<-ImageDimPlot(object, fov = i, group.by = "Topic", axes = FALSE, dark.background = F, cols = palatte10) + ggtitle(i)
+  p_seurat[[i]]<-ImageDimPlot(object, fov = i, group.by = "niches_KNN30_K6", axes = FALSE, dark.background = F, cols = palatte) + ggtitle(i)
+  p_spatial_lda[[i]]<-ImageDimPlot(object, fov = i, group.by = "topic_spatialLDA", axes = FALSE, dark.background = F,cols = palatte) + ggtitle(i)
+  p_utag[[i]]<-ImageDimPlot(object, fov = i, group.by = "utag_domain", axes = FALSE, dark.background = F,cols = palatte20) + ggtitle(i)
+  p_Banksy[[i]]<-ImageDimPlot(object, fov = i, group.by = "domain_BankSY", axes = FALSE, dark.background = F,cols = palatte) + ggtitle(i)
+  if(i %in% names(spleen_objects)[1:3]){
+    p_true[[i]]<-ImageDimPlot(object, fov = i, group.by = "manual", axes = FALSE, dark.background = F,cols = "glasbey")  + ggtitle(i)
+  }
+  p_celltype[[i]]<-ImageDimPlot(object, fov = i, group.by = "cluster", axes = FALSE, dark.background = F,cols = "glasbey")  + ggtitle(i)
+}
+```
+
+```{r}
+wrap_plots(p_celltype[1:3],nrow = 1,guides = "collect") & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_celltype.png",width = 15,height = 5, units = "in")
+wrap_plots(p_true[1:3],nrow = 1,guides = "collect") & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_manual.png",width = 15,height = 5, units = "in")
+wrap_plots(p_spatopic[1:3],nrow = 1,guides = "collect") & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_spatopic.png",width = 15,height = 5, units = "in")
+wrap_plots(p_spatopic_v2[1:3],nrow = 1,guides = "collect") & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_spatopic_K9.png",width = 15,height = 5, units = "in")
+wrap_plots(p_seurat[1:3],nrow = 1,guides = "collect") & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_seurat.png",width = 15,height = 5, units = "in")
+wrap_plots(p_spatial_lda[1:3],nrow = 1,guides = "collect") & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_spatialLDA.png",width = 15,height = 5, units = "in")
+wrap_plots(p_utag[1:3],nrow = 1,guides = "collect") & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_utag.png",width = 15,height = 5, units = "in")
+wrap_plots(p_Banksy[1:3],nrow = 1,guides = "collect") & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_BankSY.png",width = 15,height = 5, units = "in")
+```
+
+```{r}
+### plot legend
+p_spatopic[[1]]
+p_spatopic_v2[[1]]
+p_seurat[[1]]
+p_spatial_lda[[1]]
+p_utag[[1]]
+p_Banksy[[1]]
+p_true[[1]]
+p_celltype[[1]]
+```
+
+```{r}
+wrap_plots(p_celltype,nrow = 3) & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_celltype_9images.png",width = 15,height = 15, units = "in")
+wrap_plots(p_Banksy,nrow = 3) & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_Banksy_9images.png",width = 15,height = 15, units = "in")
+wrap_plots(p_utag,nrow = 3) & NoLegend()
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_utag_9images.png",width = 15,height = 15, units = "in")
+wrap_plots(p_seurat,nrow = 3) & NoLegend() 
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_seurat_9images.png",width = 15,height = 15, units = "in")
+wrap_plots(p_spatial_lda,nrow = 3) & NoLegend()  
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/spleen_spatialLDA_9images.png",width = 15,height = 15, units = "in")
+```
+
+```{r}
+### plot legend for the whole image
+lapply(spleen_objects, function(df) table(df[["domain_BankSY"]]))
+
+lapply(spleen_objects, function(df) table(df[["utag_domain"]]))
+
+palette20<-glasbey.colors(25)[-1]
+names(palette20)<-as.character(0:23)
+
+data <- data.frame(
+  x = rep(1, length(palette20)),
+  y = seq_along(palette20),
+  color = names(palette20)
+)
+
+# Create the ggplot
+p <- ggplot(data, aes(x, y, color = color)) +
+  geom_point(size = 5) + # Adjust the size of the points as needed
+  scale_color_manual(values = palette20) + # Map the colors manually
+  labs(color = "Legend") + # Label the legend
+  theme_minimal() + # Use a minimal theme
+  theme(axis.title = element_blank(), 
+        axis.text = element_blank(), 
+        axis.ticks = element_blank(),
+        panel.grid = element_blank()) # Hide axes and grid
+
+# Print the plot
+print(p)
+```
+
+### 3D images
+
+Use the first figure as the example
+
+```{r}
+## Figure 1
+Fig1<- spleen_objects[[1]]
+
+palatte<- c("#0000FFFF","#FF0000FF","#00FF00FF","#009FFFFF","#FF00B6FF","#005300FF","#FFD300FF")
+names(palatte)<-as.character(1:7)
+
+## Only use information that
+figure_data <- Fig1@meta.data[,c("X","Y","Z","Topic_3D","manual")]
+## add colors
+figure_data$color <- palatte[figure_data$Topic_3D]
+figure_data$color2 <- palatte[figure_data$manual]
+```
+
+```{r}
+library(rgl)
+plot3d( 
+  x=figure_data$X, y=figure_data$Y, z=figure_data$Z, 
+  col = figure_data$color2, 
+  xlab="X", ylab="Y", zlab="Z")
+
+rglwidget()
+```
+
+### ARI
+
+```{r}
+library(mclust)
+## ADJUSTED RAND INDEX
+ARIs<-matrix(0,3,5)
+for(i in 1:3){
+  ARIs[i, 1]<-adjustedRandIndex(spleen_objects[[i]]$Topic_r150_sigma20_K6,spleen_objects[[i]]$manual)
+ ARIs[i, 2]<-adjustedRandIndex(spleen_objects[[i]]$niches_KNN30_K6,spleen_objects[[i]]$manual)
+ ARIs[i, 3]<-adjustedRandIndex(spleen_objects[[i]]$domain_BankSY,spleen_objects[[i]]$manual)
+ ARIs[i, 4]<-adjustedRandIndex(spleen_objects[[i]]$utag_domain,spleen_objects[[i]]$manual)
+ ARIs[i, 5]<-adjustedRandIndex(spleen_objects[[i]]$topic_spatialLDA,spleen_objects[[i]]$manual)
+}
+colnames(ARIs)<-c("SpatialTopic","Seurat-v5","BankSY","UTAG","Spatial-LDA")
+rownames(ARIs)<-names(spleen_objects)[1:3]
+```
+
+```{r}
+library(reshape2)
+data_long <- melt(ARIs, id.vars = "Sample")
+colnames(data_long)<-c("Sample","Method","ARI")
+
+data_long$Method <- factor(data_long$Method, levels = c("SpatialTopic", "Seurat-v5", "BankSY", "UTAG", "Spatial-LDA"))
+
+library(ggsci)
+my_color<- pal_npg("nrc", alpha = 0.9)(6)
+# Plotting
+library(ggpubr)
+ggbarplot(data_long,x = "Sample", y = "ARI", fill ="Method", xlab = "Sample",ylab = "Adjusted Rand Index",position = position_dodge(0.8),legend = "right",palette = my_color)+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Topic content analysis
+
+### Heatmap
+
+```{r,fig.height=5}
+load(file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/gibbs.res.rdata")
+m <- as.data.frame(gibbs.res$Beta)
+pheatmap::pheatmap(t(m))
+
+library(RColorBrewer)
+breaksList = seq(0.01, 0.4, by = 0.01)
+
+# Plots the first heatmap
+pheatmap::pheatmap(t(m), # Plots the first 10 genes of the dataset
+         color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdYlBu")))(length(breaksList)), # Defines the vector of colors for the legend (it has to be of the same lenght of breaksList),
+         angle_col = 45,
+         angle_row = 45,
+         breaks = breaksList) # Sets the breaks of the color scale as in breaksList
+```
+
+### More analysis for SpaTopic
+
+#### Barplots
+
+```{r,fig.height=7,fig.width=12}
+library(tidyverse)
+library(tidytext)
+palatte<- c("#0000FFFF","#FF0000FF","#00FF00FF","#009FFFFF","#FF00B6FF","#005300FF","#FFD300FF")
+names(palatte)<-paste0("topic",as.character(1:7))
+
+### show top 10 clusters for each topic (based on beta)
+beta_top_terms <- m %>% mutate(celltype = rownames(m)) %>%
+  gather(.,key = topics,value = beta,-celltype) %>%
+  group_by(topics) %>%
+  slice_max(beta, n = 10) %>% 
+  ungroup() %>%
+  arrange(topics, -beta)
+
+beta_top_terms %>%
+  mutate(celltype = reorder_within(celltype, beta, topics)) %>%
+  ggplot(aes(beta, celltype, fill = factor(topics))) +
+  geom_col(show.legend = FALSE,orientation = "y") +
+  facet_wrap(~ topics, scales = "free")+ 
+  scale_fill_manual(values = palatte)+
+  scale_y_reordered()+theme_bw()+ RotatedAxis()+theme(axis.text.y = element_text(face = "bold"))+#theme(axis.text.y = element_text(angle = 30, hjust = 1),axis.text.x = element_text(angle = 45, hjust = 1))+
+  xlab("Beta")+ylab("Cell phenotypes")+FontSize(y.text = 11,x.text = 11,y.title = 14,x.title = 14)
+
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/beta_barplot.png",width = 13,height = 7, units = "in")
+
+### Find the most significant cell types for each topic
+celltype<- lapply(spleen_objects, function(df) df[["cluster"]])
+celltype<- unlist(celltype)
+
+### calcualte the lift
+emp.prob <- log(table(celltype))-log(length(celltype))
+lift <- log(m) -  emp.prob
+colnames(lift)<-paste0("topic",1:6)
+lift<-as.data.frame(lift)
+#pheatmap::pheatmap(lift)
+
+lift_top_terms <- lift %>% mutate(celltype = rownames(m)) %>%
+  gather(.,key = topics,value = lift,-celltype) %>%
+  group_by(topics) %>%
+  slice_max(lift, n = 10) %>% 
+  ungroup() %>%
+  arrange(topics, -lift)
+
+lift_top_terms %>%
+  mutate(celltype = reorder_within(celltype, lift, topics)) %>%
+  ggplot(aes(lift, celltype, fill = factor(topics))) +
+  geom_col(show.legend = FALSE,orientation = "y") +
+  scale_fill_manual(values = palatte)+
+  facet_wrap(~ topics, scales = "free")+
+  scale_y_reordered()+theme_bw()+
+  xlab("lift (log-ratio of topic weight over cell phenotype frequency)")+ylab("Cell phenotypes")
+
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/lift_barplot.png",width = 12,height = 7, units = "in")
+```
+
+```{r,fig.height=7,fig.width=12}
+palatte<- c("#0000FFFF","#FF0000FF","#00FF00FF","#009FFFFF","#FF00B6FF","#005300FF","#FFD300FF")
+names(palatte)<-paste0("topic",as.character(1:7))
+
+m <- as.data.frame(gibbs.res$Beta)
+
+deconGexp <- t(m)
+betamarg <- colSums(deconGexp)
+
+get_lift_stat = function(betavec, type="lift", omega=.3){
+ if (type=="frex"){
+    out=(omega/stats::ecdf(betavec/betamarg)(betavec/betamarg) +(1-omega)/stats::ecdf(betavec)(betavec))^(-1)
+    names(out)=names(betavec)
+  }
+  out
+}
+
+frex_stats = apply(deconGexp, 1, get_lift_stat, type="frex", omega=0.9)
+pheatmap::pheatmap(frex_stats)
+frex_stats = as.data.frame(frex_stats)
+
+lift_top_terms <- frex_stats %>% mutate(celltype = rownames(m)) %>%
+  gather(.,key = topics,value = frex_stats,-celltype) %>%
+  group_by(topics) %>%
+  slice_max(frex_stats, n = 10) %>% 
+  ungroup() %>%
+  arrange(topics, -frex_stats)
+
+lift_top_terms %>%
+  mutate(celltype = reorder_within(celltype, frex_stats, topics)) %>%
+  ggplot(aes(frex_stats, celltype, fill = factor(topics))) +
+  geom_col(show.legend = FALSE,orientation = "y") +
+  scale_fill_manual(values = palatte)+
+  facet_wrap(~ topics, scales = "free")+
+  scale_y_reordered()+theme_bw()+
+  xlab("FREX(omega = 0.9)")+ylab("Cell phenotypes")
+
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/frex0.9_barplot.png",width = 12,height = 7, units = "in")
+```
+
+#### Line plots
+
+```{r,fig.width=10,fig.height=8}
+celltype<- lapply(spleen_objects, function(df) df[["cluster"]])
+celltype<- unlist(celltype)
+
+image<- lapply(spleen_objects, function(df) df[["sample"]])
+image<- unlist(image)
+
+df.frame<-table(image,celltype)
+df.frame<-as.data.frame(df.frame/rowSums(df.frame))
+colnames(df.frame)<-c("sample","CellPhenotype","Freq")
+df.frame$time<-as.factor(df.frame$sample)
+levels(df.frame$time)<-1:9
+
+library(ggpubr)
+
+#palette<-hue_pal()(6)
+palette<- c("#0000FFFF","#FF0000FF","#00FF00FF","#009FFFFF","#FF00B6FF","#005300FF","#FFD300FF")
+```
+
+-   select top 3 for each topic
+
+```{r}
+top_three <- function(column, rownames) {
+  top_indices <- order(column, decreasing = TRUE)[1:3]  # Get indices of top 3 values
+  rows <- rownames[top_indices]  # Get the row names of top 3 values
+  rows  # Return a dataframe with values and row names
+}
+
+# Apply the function to each column
+result <- apply(frex_stats, 2, top_three,rownames = rownames(frex_stats))
+result[3,5] <- ""
+result[1,4] <- "ERTR7(+) stroma"
+
+names<-c("Topic1:red pulp", "Topic2:PALS", "Topic3:B-follicle","Topic4:CD106+ immune zone","Topic5:B220+ DN T cell zone","Topic6:Erythroblastic zone")
+  
+p_list<-list()
+for(i in 1:6){
+  p_list[[i]]<-df.frame %>% filter(CellPhenotype %in% result[,i]) %>%
+  ggline(.,x = "time",y = "Freq",color = palette[i], linetype = "CellPhenotype", size = 1)+
+  xlab("sample")+ylab("Frequency")+scale_y_log10()+ggtitle(names[i])
+}
+
+wrap_plots(p_list,nrow = 2, guides = "collect") & theme(legend.position = "bottom",legend.direction = "vertical")
+
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/celltype_dynamic_top3.png",width = 12,height = 8, units = "in")
+```
+
+```{r,fig.width=5,fig.height=8}
+topic<- lapply(spleen_objects, function(df) df[["Topic_r150_sigma20_K6"]])
+topic<- unlist(topic)
+
+df.frame<-table(image,topic)
+colnames(df.frame)<-paste0("topic",1:6)
+df.frame<-as.data.frame(df.frame/rowSums(df.frame))
+colnames(df.frame)<-c("sample","topic","Freq")
+df.frame$time<-as.factor(df.frame$sample)
+levels(df.frame$time)<-1:9
+
+library(ggpubr)
+library(scales)
+library(patchwork)
+
+
+df.frame %>% filter(topic %in% c("topic1","topic2","topic3")) %>%
+  ggline(.,x = "time",y = "Freq",color = "topic",size = 1,palette= palette[c(1,2,3)])+xlab("Sample")+ylab("Topic proportion")->p1
+
+df.frame %>% filter(topic %in% c("topic4","topic5","topic6")) %>%
+  ggline(.,x = "time",y = "Freq",color = "topic",size = 1,palette= palette[c(4,5,6)])+xlab("Sample")+ylab("Topic proportion")->p2
+
+wrap_plots(p1,p2,nrow = 2)
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/topic_dynamic.png",width = 4,height = 6, units = "in")
+```

@@ -1,0 +1,394 @@
+---
+title: "Method Comparison on Mouse Spleen Dataset"
+format: html
+editor: visual
+---
+
+Note: store results from different softwares in the same object
+
+## Mouse Spleen Dataset
+
+```{r}
+library(Seurat)
+library(ggplot2)
+palatte<- c("#0000FFFF","#FF0000FF","#00FF00FF","#009FFFFF","#FF00B6FF","#005300FF","#FFD300FF")
+```
+
+```{r,eval=FALSE}
+## read data from python object
+x<-readRDS(file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/spleen_df.rds")
+names(x)
+### use a list of Seurat object to store
+spleen_objects<-list()
+p_celltype<-NULL
+for(i in names(x)){
+  counts<-as.matrix(x[[i]][,c(2:30,34)])
+  subset<-CreateSeuratObject(counts = t(counts), assay = "protein")
+  subset$X<-x[[i]]$sample.X
+  subset$Y<-x[[i]]$sample.Y
+  subset$cluster<-x[[i]]$cluster
+  subset$sample<-x[[i]]$sample
+  coords <- CreateFOV(
+    data.frame(X = subset$X,Y = subset$Y),
+    type = c("centroids"),assay = "protein"
+  )
+  i<-gsub("-", ".", i)
+  subset[[i]] <- coords
+  spleen_objects[[i]]<-subset
+  p_celltype[[i]]<-ImageDimPlot(subset, fov = i, group.by = "cluster", axes = TRUE, 
+                           dark.background = T,cols = "glasbey") + ggtitle("Topic") 
+}
+```
+
+### SpaTopic
+
+```{r,eval=FALSE}
+library(SpaTopic)
+library(sf)
+x<-readRDS(file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/spleen_df.rds")
+names(x)
+## number of cells per region on average:
+## 78.0115735588694
+select_column<-function(data){
+  data_select<-as.data.frame(cbind(data$sample, data$sample.X, data$sample.Y, data$sample.Z, data$cluster))
+  colnames(data_select)<-c("image","X","Y","Y2","type")
+  data_select$image<-gsub("-", ".", data_select$image)
+  data_select
+}
+dataset<-lapply(x,select_column)
+
+system.time(gibbs.res<-SpaTopic_inference(dataset, ntopics = 6, sigma = 20, region_radius = 150, burnin = 1500))
+save(gibbs.res,file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/gibbs.res.rdata")
+```
+
+#### 3D example cases
+
+```{r,eval=FALSE}
+system.time(gibbs.res<-SpaTopic_inference(dataset, ntopics = 6, sigma = 20, region_radius = 150, burnin = 1500, axis = "3D"))
+save(gibbs.res,file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/gibbs.res.K6.r150.sigma20.3D.rdata")
+```
+
+Update 3D result in the seurat object
+
+```{r,eval=FALSE}
+itr_df<-do.call(rbind, dataset)
+itr_df$image<-as.factor(itr_df$image)
+prob<-as.matrix(gibbs.res$Z.trace)
+itr_df$Z_max<-as.factor(apply(prob,1,which.max))
+
+## update result in seurat object
+for(i in names(spleen_objects)){
+    object<-spleen_objects[[i]]
+    name2<-gsub("\\.", "-", i)
+    object$Z<-x[[name2]]$sample.Z
+    object$Topic_3D<-itr_df$Z_max[itr_df$image == i]
+    spleen_objects[[i]]<-object
+}
+#save(spleen_objects, file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/mouse_spleen_with_result.rdata")
+```
+
+```{r, eval=FALSE,echo=FALSE}
+## multiple K result
+gibbs.list<-NULL
+for (ntopic in 6:12){
+  system.time(gibbs.res<-SpaTopic_inference(dataset, ntopics = ntopic, sigma = 20, region_radius = 150, burnin = 1500))
+  gibbs.list[[ntopic]]<-gibbs.res
+}
+save(gibbs.list,file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/gibbs.res.multiK.r150.sigma20.rdata")
+```
+
+```{r,eval=FALSE}
+## summarizing results across images
+itr_df<-do.call(rbind, dataset)
+itr_df$image<-as.factor(itr_df$image)
+prob<-as.matrix(gibbs.res$Z.trace)
+itr_df$Z_max<-as.factor(apply(prob,1,which.max))
+
+## update result in seurat object
+for(i in names(spleen_objects)){
+    object<-spleen_objects[[i]]
+    object$Topic<-itr_df$Z_max[itr_df$image == i]
+    spleen_objects[[i]]<-object
+}
+```
+
+```{r,eval=FALSE}
+## visualization
+p_spatopic<-NULL
+library(Polychrome)
+palatte10<-glasbey.colors(10)
+names(palatte10)<-1:10
+for(i in names(spleen_objects)){
+  object<-spleen_objects[[i]]
+  p_spatopic[[i]]<-ImageDimPlot(object, fov = i, group.by = "Topic", axes = TRUE, dark.background = T, cols = palatte10) + ggtitle(i)
+}
+library(patchwork)
+wrap_plots(p_spatopic,now = 3,guides = "collect")
+```
+
+### Seurat v5
+
+```{r,eval=FALSE}
+library(Seurat)
+set.seed(123)
+## find niche assay separately
+system.time(
+for(i in names(spleen_objects)){
+    object<-spleen_objects[[i]]
+    object <- BuildNicheAssay(object = object, fov = i, group.by = "cluster", niches.k = 6, neighbors.k = 30) ## maybe just use default
+    spleen_objects[[i]]<-object
+})
+```
+
+```{r,eval=FALSE}
+## combine niche assay
+spleen<-merge(spleen_objects[[1]],c(spleen_objects[[2]],spleen_objects[[3]],spleen_objects[[4]],spleen_objects[[5]],spleen_objects[[6]],spleen_objects[[7]],spleen_objects[[8]],spleen_objects[[9]]))
+
+### combine niche assay
+### user  system elapsed 115.178   1.062 116.617 
+DefaultAssay(spleen) <- "niche"
+spleen <- ScaleData(spleen)
+system.time(results <- kmeans(x = t(spleen[["niche"]]@scale.data), centers = 6, 
+                     nstart = 30))
+spleen$niches <- as.factor(results[["cluster"]])
+```
+
+```{r,eval=FALSE}
+## visualization
+p_seurat<-NULL
+spleen$sample<- gsub("-", ".", spleen$sample)
+names(palatte)<-as.character(1:7)
+for(i in names(spleen_objects)){
+    object<-spleen_objects[[i]]
+    object$niches<-spleen$niches[spleen$sample == i]
+    p_seurat[[i]]<-ImageDimPlot(object, fov = i, group.by = "niches", axes = TRUE, 
+                           dark.background = T, cols = palatte) + ggtitle(i)
+    spleen_objects[[i]]<-object
+}
+wrap_plots(p_seurat,now = 3,guides = "collect")
+#rm(spleen)
+#gc()
+```
+
+### Banksy
+
+Modified for multiple samples
+
+```{r,eval=FALSE}
+library(Banksy)
+library(SummarizedExperiment)
+library(SpatialExperiment)
+library(scuttle)
+library(cowplot)
+library(ggplot2)
+```
+
+-   Use normalized data pre-processed with scanpy to create SpatialExperiment objects
+
+```{r,eval=FALSE}
+### Use data previously processed with scanpy
+Banksy = schard::h5ad2seurat('/Users/xiyupeng/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/mouse_spleen_adata_labeled_bat_corrected_multi_res_max_dist60.h5ad')
+Banksy$sample<-gsub("-", ".", Banksy$sample)
+
+spe_list<-list()
+for(i in names(spleen_objects)){
+   seurat_sub<-subset(Banksy, sample == i)
+   ## copy scanpy processed data into seurat objects
+   X<-GetAssayData(seurat_sub)
+   rownames(X)<-rownames(spleen_objects[[i]][["protein"]])
+   colnames(X)<-NULL
+   spleen_objects[[i]][["protein"]]$scale.data<-X
+   ##create spatial experiment objects for Banksy
+   coords<-GetTissueCoordinates(spleen_objects[[i]],which = "centroids")
+   cells <- coords$cell
+   rownames(coords) <- cells
+   coords <- as.matrix(coords[, c("x", "y")])
+   
+   spe_list[[i]] <- SpatialExperiment(
+    assay = list(processedExp = X),
+    spatialCoords = coords,
+    colData = spleen_objects[[i]]@meta.data[,c("cluster","sample")])
+}
+```
+
+run BankSY
+
+```{r,eval=FALSE}
+aname<-"processedExp"
+k_geom <- 30
+compute_agf <- FALSE
+system.time(spe_list <- lapply(spe_list, computeBanksy, assay_name = aname, 
+                   compute_agf = compute_agf, k_geom = k_geom))
+```
+
+```{r,eval=FALSE}
+## combine object together
+spe_joint <- do.call(cbind, spe_list)
+rm(spe_list)
+invisible(gc())
+```
+
+```{r,eval=FALSE}
+lambda <- 0.8
+use_agf <- FALSE
+npcs <- 30
+system.time(spe_joint <- runBanksyPCA(spe_joint, use_agf = use_agf, lambda = lambda, group = "sample", seed = 123, npcs = npcs))
+```
+
+```{r,eval=FALSE}
+res <- c(0.1,0.2,0.3,0.5)
+system.time(spe_joint <- clusterBanksy(spe_joint, use_agf = use_agf, lambda = lambda, resolution = res, seed = 123, npcs = npcs))
+save(spe_joint,file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/spe_joint.rdata")
+```
+
+```{r,eval=FALSE}
+load(file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/spe_joint.rdata")
+spe_joint$sample<-gsub("-", ".", spe_joint$sample)
+spe_list <- lapply(names(spleen_objects), function(x) spe_joint[, spe_joint$sample == x])
+names(spe_list)<-names(spleen_objects)
+#rm(spe_joint)
+#invisible(gc())
+library(Polychrome)
+library(patchwork)
+palatte10<-glasbey.colors(15)
+names(palatte10)<-as.character(1:15)
+
+## Copy and paste result to seurat object and visualization
+p_Banksy<-NULL
+
+for(i in names(spleen_objects)){
+    object<-spleen_objects[[i]]
+    object$domain_BankSY<-as.factor(spe_list[[i]]$clust_M0_lam0.8_k50_res0.2)
+    p_Banksy[[i]]<-ImageDimPlot(object, fov = i, group.by = "domain_BankSY", axes = TRUE, dark.background = T, cols = palatte10) + ggtitle(i)
+    spleen_objects[[i]]<-object
+}
+wrap_plots(p_Banksy,now = 3,guides = "collect")
+```
+
+### Spatial LDA
+
+CPU times: user 12h 3s, sys: 1d 9h 13min 59s, total: 1d 21h 14min 3s Wall time: 7h 11min 24s
+
+```{r,eval = FALSE}
+## read Seurat object from h5ad2
+tw_spatial_lda<-read.csv("/Users/xiyupeng/Documents/Research/github/SpaTopic_benchmarking/methods/spatial_lda/train_model/K6_spatial_lda_mouse_spleen_topicweights.csv")
+spleen<-merge(spleen_objects[[1]],c(spleen_objects[[2]],spleen_objects[[3]],spleen_objects[[4]],spleen_objects[[5]],spleen_objects[[6]],spleen_objects[[7]],spleen_objects[[8]],spleen_objects[[9]]))
+spleen$sample<- gsub("-", ".", spleen$sample)
+```
+
+```{r,eval=FALSE}
+### visualization
+library(Polychrome)
+p_spatial_lda<-NULL
+topic<-apply(tw_spatial_lda,1,which.max)
+topic_spatial_LDA<-as.factor(topic)
+for(i in names(spleen_objects)){
+    object<-spleen_objects[[i]]
+    object$topic_spatialLDA<-topic_spatial_LDA[spleen$sample == i]
+    p_spatial_lda[[i]]<-ImageDimPlot(object, fov = i, group.by = "topic_spatialLDA", axes = TRUE, 
+                           dark.background = T,cols = palatte) + ggtitle(i)
+    spleen_objects[[i]]<-object
+}
+wrap_plots(p_spatial_lda,now = 3,guides = "collect")
+```
+
+### UTAG
+
+CPU times: user 3h 35min 59s, sys: 16min 52s, total: 3h 52min 52s Wall time: 3h 51min 1s
+
+```{r,eval=FALSE}
+## read Seurat object from h5ad2
+utag = schard::h5ad2seurat('/Users/xiyupeng/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/mouse_spleen_adata_labeled_bat_corrected_multi_res_max_dist60.h5ad')
+utag_result<-utag@meta.data[,grep("UTAG",colnames(utag@meta.data))]
+colnames(utag_result)
+```
+
+```{r,eval=FALSE}
+### visualization
+library(Polychrome)
+p_utag<-NULL
+utag$sample<- gsub("-", ".", utag$sample)
+palatte20<-glasbey.colors(24)
+utag_result$`UTAG Label_leiden_0.3`<-as.factor(utag_result$`UTAG Label_leiden_0.3`)
+names(palatte20)<-levels(utag_result$`UTAG Label_leiden_0.3`)
+for(i in names(spleen_objects)){
+    object<-spleen_objects[[i]]
+    object$utag_domain<-utag_result$`UTAG Label_leiden_0.3`[utag$sample == i]
+    p_utag[[i]]<-ImageDimPlot(object, fov = i, group.by = "utag_domain", axes = TRUE, 
+                           dark.background = T,col = palatte20) + ggtitle(i)
+    spleen_objects[[i]]<-object
+}
+wrap_plots(p_utag,now = 3,guides = "collect")
+```
+
+### Save Data
+
+```{r,eval=FALSE}
+save(spleen_objects, file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/mouse_spleen_with_result.rdata")
+```
+
+### Visualization
+
+```{r}
+load(file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/mouse_spleen_with_result.rdata")
+```
+
+image plot
+
+```{r}
+library(Polychrome)
+library(patchwork)
+palatte20<-glasbey.colors(24)
+palatte10<-glasbey.colors(10)
+names(palatte)<-as.character(1:7)
+names(palatte20)<-levels(spleen_objects[[1]]$utag_domain)
+names(palatte10)<-as.character(1:10)
+p_spatopic<-NULL
+p_seurat<-NULL
+p_spatial_lda<-NULL
+p_utag<-NULL
+p_Banksy<-NULL
+for(i in names(spleen_objects)){
+  object<-spleen_objects[[i]]
+  ## by default, SpaTopic was run with r=300
+  p_spatopic[[i]]<-ImageDimPlot(object, fov = i, group.by = "Topic", axes = TRUE, 
+                           dark.background = T, cols = palatte) + ggtitle(i)
+  p_seurat[[i]]<-ImageDimPlot(object, fov = i, group.by = "niches_KNN30_K6", axes = TRUE, 
+                           dark.background = T, cols = palatte) + ggtitle(i)
+  p_spatial_lda[[i]]<-ImageDimPlot(object, fov = i, group.by = "topic_spatialLDA", axes = TRUE,  dark.background = T,cols = palatte) + ggtitle(i)
+  p_utag[[i]]<-ImageDimPlot(object, fov = i, group.by = "utag_domain", axes = TRUE, 
+                           dark.background = T,cols = palatte20) + ggtitle(i)
+  p_Banksy[[i]]<-ImageDimPlot(object, fov = i, group.by = "domain_BankSY", axes = TRUE,  dark.background = T, cols = palatte20) + ggtitle(i)
+}
+```
+
+```{r,fig.width=16,fig.height=12}
+wrap_plots(p_spatopic)
+wrap_plots(p_seurat)
+wrap_plots(p_spatial_lda)
+wrap_plots(p_utag)
+wrap_plots(p_Banksy)
+```
+
+Heatmap
+
+```{r}
+spleen<-merge(spleen_objects[[1]],c(spleen_objects[[2]],spleen_objects[[3]],spleen_objects[[4]],spleen_objects[[5]],spleen_objects[[6]],spleen_objects[[7]],spleen_objects[[8]],spleen_objects[[9]]))
+spleen$sample<- gsub("-", ".", spleen$sample)
+```
+
+```{r,fig.height=6}
+load(file = "~/Documents/Research/github/SpaTopic_benchmarking/data/mouse_spleen_data/gibbs.res.rdata")
+m <- as.data.frame(gibbs.res$Beta)
+rowname<-levels(as.factor(spleen$cluster))
+colnames(m)<-paste0("topic",1:6)
+rownames(m)<-rowname
+pheatmap::pheatmap(t(m))
+```
+
+For single gene marker
+
+```{r}
+VlnPlot(spleen_objects[[1]], features = "CD19", assay = "protein", layer = "counts", pt.size = 0) + NoLegend()
+VlnPlot(spleen_objects[[1]], features = "CD19", assay = "protein", layer = "scale.data", pt.size = 0) + NoLegend()
+```
