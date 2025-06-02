@@ -75,7 +75,13 @@ for(id in 1:26){
   
   ### split the object into small objects, each for every image
   image_id<-gsub("-", ".", images[id])
-  subset<-subset(healthy_lung,roi == images[id])
+  
+  ## not sure why I cannot use subset now
+  #subset<-subset(healthy_lung,roi == images[id])
+  roi_value <- images[id]
+  cells_to_keep <- WhichCells(healthy_lung, expression = roi == roi_value)
+  subset <- subset(healthy_lung, cells = cells_to_keep)
+  
   coords <- CreateFOV(
     data.frame(X = subset$X_centroid,Y = subset$Y_centroid),
     type = c("centroids"),assay = "RNA"
