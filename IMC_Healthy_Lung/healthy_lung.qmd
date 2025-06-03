@@ -132,6 +132,8 @@ data_long$Method<-as.factor(data_long$Method)
 levels(data_long$Method)<-c("Celltype","SpatialTopic","UTAG","UTAG_relabel")
 library(ggpubr)
 ggboxplot(data_long,x = "Method",y = "ARI", fill = "Method",legend = "right")+scale_fill_npg()+ylab("Adjusted Rand Index")
+ggsave("~/Documents/Research/github/SpaTopic_benchmarking/results/figures/lung_ari.pdf",width = 7,height = 4, units = "in")
+
 
 m <- as.data.frame(gibbs.res$Beta)
 rowname<-levels(healthy_lung$`cell type`)

@@ -1,0 +1,331 @@
+---
+title: "Simulation_result"
+format: html
+editor: visual
+---
+
+```{r}
+set.seed(123)
+library(ggplot2)
+library(mclust)
+library(ggpubr)
+```
+
+## Simulation on simple figure with four domains
+
+```{r function}
+
+simulate_celltype_proportions <- function(n.celltypes = 20, 
+                                         n.topics = 4, 
+                                         celltype_per_topic = 5,
+                                         shape = 1, 
+                                         rate = 1, 
+                                         seed = NULL) {
+  
+  # Set seed if provided
+  if (!is.null(seed)) set.seed(seed)
+  
+  # Check if parameters are valid
+  if (n.celltypes != n.topics * celltype_per_topic) {
+    stop("n.celltypes must equal n.topics * celltype_per_topic")
+  }
+  
+  # Initialize matrix with zeros
+  perc <- matrix(0, nrow = n.celltypes, ncol = n.topics)
+  
+  # Generate gamma values for each block
+  for (i in 1:n.topics) {
+    start_idx <- (i-1) * celltype_per_topic + 1
+    end_idx <- i * celltype_per_topic
+    num <- rgamma(celltype_per_topic, shape, rate)
+    ## avoid if it is too small
+    num[num<0.01] <- 0.01
+    perc[start_idx:end_idx, i]<-num
+  }
+  
+  # Normalize columns to sum to 1
+  perc <- t(perc)/apply(perc, 2, sum)
+  perc <- t(perc)
+  
+  # Add column names
+  colnames(perc) <- paste0("topic", 1:n.topics)
+  #rownames(perc) <- paste0("celltype", 1:n.celltypes)
+  
+  return(perc)
+}
+
+simulation_MIF<-function(topic,dist,n.cells,n.celltypes,seed = NULL){
+  
+  if (!is.null(seed)) set.seed(seed)
+  C<-NULL
+  ### multinomial distribution 
+  for (i in 1:n.cells){
+    C[i]<- sample(n.celltypes, 1, FALSE, dist[,topic[i]])
+  }  
+  
+  return(C)
+}
+```
+
+```{r}
+library(dplyr)
+### around 170 cells per region 
+
+load(file = "~/Documents/Research/github/SpaTopic_benchmarking/simulation/rerun/data/LIBDsubsample.RData")
+
+## parameters for simulation
+subsample$niche<-subsample$label
+ncells<-nrow(subsample)
+n.celltypes<-20
+
+perc<-simulate_celltype_proportions(n.celltypes = n.celltypes, n.topics = 4, 
+                      celltype_per_topic = 5, shape = 1, rate = 1, seed = 123)
+subsample$type<-simulation_MIF(subsample$niche,perc,ncells,n.celltypes,seed = 123)
+```
+
+```{r}
+ggplot(subsample,aes(x = x_coor,y = y_coor, color = as.factor(label)))+geom_point(size = 0.8)
+ggplot(subsample,aes(x = x_coor,y = y_coor, color = as.factor(type)))+geom_point(size = 0.8)
+```
+
+```{r}
+library(patchwork)
+subsample$domain<-as.factor(subsample$label)
+subsample$celltype<-as.factor(subsample$type)
+p1<-ggscatter(subsample, x = "x_coor",y = "y_coor",color = "domain",size = 0.5)
+p2<-ggscatter(subsample, x = "x_coor",y = "y_coor",color = "celltype", size = 0.5)
+wrap_plots(p1,p2)
+```
+
+```{r}
+write.csv(subsample,file = "/Users/xiyupeng/Documents/Research/github/SpaTopic_benchmarking/manuscript/final_checklist/source_data/figureS10A.csv",
+          row.names = FALSE,quote = FALSE)
+```
+
+## Run with SpatialTopic
+
+```{r}
+dataset_simu<-subsample %>% 
+  mutate(X = x_coor, Y = y_coor, image = 1,type = type) %>%
+  select(image,X,Y,type)
+
+dataset_simu<-list(dataset_simu) 
+```
+
+```{r}
+library(SpaTopic)
+system.time(gibbs.res<-SpaTopic_inference(dataset_simu, sigma = 10, ntopics = 4, region_radius = 60))
+```
+
+## Evaluate choosing number of topics with DIC
+
+```{r}
+results<-list()
+for (k in 2:6) {
+  gib<-SpaTopic_inference(dataset_simu, sigma = 10, ntopics = k,  region_radius = 60, trace = TRUE)
+  results[[k-1]]<-gib
+}
+names(results)<-2:6
+```
+
+```{r}
+lapply(results,function(x) x$Perplexity)
+lapply(results,function(x) x$loglikelihood)
+lapply(results,function(x) x$Deviance)
+lapply(results,function(x) x$DIC)
+```
+
+```{r}
+loglike.trace<-lapply(results, function(x) -2*x$loglike.trace)
+DIC<-lapply(loglike.trace, function(x) 0.5*var(x)+mean(x))
+```
+
+```{r}
+print(DIC)
+print(lapply(results,function(x) x$DIC))
+```
+
+```{r,fig.width=6,fig.height=4}
+library(ggpubr)
+data_frame <- data.frame(K = 2:6, DIC = unlist(DIC))
+
+ggline(data_frame,x = "K", y = "DIC", size = 1.5,legend = "right")+ylab("DIC")+xlab("Number of Topics")+theme(
+    text = element_text(size = 14),        # Base size for all text
+    axis.title = element_text(size = 14),  # Size for all axis titles
+    plot.title = element_text(size = 16)   # Size for plot title
+  )
+```
+
+```{r}
+write.csv(data_frame,file = "/Users/xiyupeng/Documents/Research/github/SpaTopic_benchmarking/manuscript/final_checklist/source_data/figureS10B.csv",
+          row.names = FALSE,quote = FALSE)
+```
+
+### Evaluate with classification result with K = 4
+
+```{r}
+#### visualziation 
+subsample$topic<-as.factor(gibbs.res$cell_topics)
+ggplot(subsample,aes(x = x_coor,y = y_coor, color = topic))+geom_point(size = 0.8)
+adjustedRandIndex(subsample$topic,subsample$niche)
+```
+
+### Evaluate with recovering topic contents
+
+```{r}
+colnames(perc)<-paste0("true_topic",1:4)
+heatmap(as.matrix(gibbs.res$Beta))
+heatmap(as.matrix(perc))
+```
+
+match columns of two matrics
+
+```{r}
+combined<-rbind(t(gibbs.res$Beta),t(perc))
+distance_matrix<-as.matrix(dist(combined))
+diag(distance_matrix) <- NA
+names<-rownames(combined)[apply(distance_matrix,1,which.min)]
+names(names)<-rownames(combined)
+names
+```
+
+rearrange topics
+
+```{r}
+matched<-perc[,names[colnames(gibbs.res$Beta)]]
+sum((gibbs.res$Beta-matched)^2)
+```
+
+## Multiple simulations
+
+```{r multiple_simulations,eval=FALSE}
+# Set number of simulations to run
+n_simulations <- 20
+
+# Initialize lists to store results
+results_list <- list()
+ARI_values <- numeric(n_simulations)
+topic_recovery_errors <- numeric(n_simulations)
+runtime <- numeric(n_simulations)
+
+# Load required package for ARI calculation
+library(mclust)
+
+# Run multiple simulations
+for (sim_idx in 1:n_simulations) {
+  cat("Running simulation", sim_idx, "of", n_simulations, "\n")
+  
+  # Create a copy of the original data
+  sim_data <- subsample
+  sim_data$niche <- sim_data$label
+  ncells <- nrow(sim_data)
+  n.celltypes <- 20
+  
+  # Generate cell type proportions with different seeds
+  current_seed <- 123 + sim_idx
+  perc <- simulate_celltype_proportions(n.celltypes = n.celltypes, n.topics = 4, celltype_per_topic = 5, shape = 1, rate = 1, seed = current_seed)
+  
+  # Simulate cell types
+  sim_data$type <- simulation_MIF(sim_data$niche, perc, ncells, n.celltypes, seed = current_seed)
+  
+  # Prepare dataset for SpaTopic
+  dataset_sim <- sim_data %>% 
+    mutate(X = x_coor, Y = y_coor, image = 1, type = type) %>%
+    select(image, X, Y, type)
+  
+  dataset_sim <- list(dataset_sim)
+  
+  # Run SpaTopic and time it
+  start_time <- Sys.time()
+  gibbs.res <- SpaTopic_inference(dataset_sim, sigma = 50, ntopics = 4, region_radius = 60, kneigh = 5)
+  end_time <- Sys.time()
+  
+  # Calculate runtime
+  runtime[sim_idx] <- as.numeric(difftime(end_time, start_time, units = "secs"))
+  
+  # Store results
+  results_list[[sim_idx]] <- gibbs.res
+  
+  # Calculate ARI
+  sim_data$topic <- as.factor(gibbs.res$cell_topics)
+  ARI_values[sim_idx] <- adjustedRandIndex(sim_data$topic, sim_data$niche)
+  
+  # Evaluate topic recovery (matching true and inferred topics)
+  # Combine true and inferred topic-celltype matrices
+  combined <- rbind(t(gibbs.res$Beta), t(perc))
+  distance_matrix <- as.matrix(dist(combined))
+  diag(distance_matrix) <- NA
+  
+  # Find closest matching topics
+  names <- rownames(combined)[apply(distance_matrix, 1, which.min)]
+  names(names) <- rownames(combined)
+  
+  # Calculate squared error between matched matrices
+  matched <- perc[, names[colnames(gibbs.res$Beta)]]
+  topic_recovery_errors[sim_idx] <- sum((gibbs.res$Beta - matched)^2)
+  
+  cat("Completed simulation", sim_idx, "- ARI:", ARI_values[sim_idx], 
+      "- Topic recovery error:", topic_recovery_errors[sim_idx], "\n")
+}
+```
+
+```{r analyze_results, eval=FALSE}
+# Summarize results
+results_summary <- data.frame(
+  Method = rep("SpatialTopic",n_simulations),
+  Simulation = 1:n_simulations,
+  ARI = ARI_values,
+  Topic_proportion_error = topic_recovery_errors,
+  Runtime = runtime
+)
+
+save(results_summary,file = "~/Documents/Research/github/SpaTopic_benchmarking/simulation/NC_revision_20simu.rdata")
+```
+
+```{r}
+load(file = "~/Documents/Research/github/SpaTopic_benchmarking/simulation/NC_revision_20simu.rdata")
+```
+
+```{r}
+write.csv(results_summary,file = "/Users/xiyupeng/Documents/Research/github/SpaTopic_benchmarking/manuscript/final_checklist/source_data/figureS10C.csv",
+          row.names = FALSE,quote = FALSE)
+```
+
+```{r}
+
+# Visualize results
+library(ggplot2)
+library(patchwork)
+library(latex2exp)
+
+# Plot using base ggplot2 instead of ggpubr
+p1 <- ggplot(results_summary, aes(x = Method, y = Runtime)) +
+  geom_boxplot() +
+  labs(y = "Runtime (s)", title = "Runtime",x= "") +
+  theme_minimal()+ theme(
+    text = element_text(size = 14),        # Base size for all text
+    axis.title = element_text(size = 14),  # Size for all axis titles
+    plot.title = element_text(size = 16)   # Size for plot title
+  )
+
+p2 <- ggplot(results_summary, aes(x = Method, y = ARI)) +
+  geom_boxplot() +
+  labs(y = "Adjusted Rand Index", title = "Clustering Accuracy",x= "") +
+  theme_minimal()+ theme(
+    text = element_text(size = 14),        # Base size for all text
+    axis.title = element_text(size = 14),  # Size for all axis titles
+    plot.title = element_text(size = 16)   # Size for plot title
+  )
+
+p3 <- ggplot(results_summary, aes(x = Method, y = Topic_proportion_error)) +
+  geom_boxplot() +
+  labs(y = expression(paste("||", hat(Beta), "-", Beta, "||"^2)), title = "Topic Recovery", x= "") +
+  theme_minimal()+theme(
+    text = element_text(size = 14),        # Base size for all text
+    axis.title = element_text(size = 14),  # Size for all axis titles
+    plot.title = element_text(size = 16)   # Size for plot title
+  )
+
+# Combine plots with patchwork
+wrap_plots(p1, p2, p3)
+```

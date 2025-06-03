@@ -13,6 +13,7 @@ library(Seurat)
 library(ggplot2)
 load("~/Documents/Research/github/SpaTopic_benchmarking/data/nanostring_example_lung5-1/nanostring_example_with_result.rdata")
 palatte<- c("#0000FFFF","#FF0000FF","#00FF00FF","#009FFFFF","#FF00B6FF","#005300FF","#FFD300FF")
+options(future.globals.maxSize = 2 * 1024^3)
 ```
 
 ```{r,eval=FALSE}
@@ -138,7 +139,7 @@ We already set the convergence threshold of ADDM 0.01 to accelerate convergence 
 library(ggplot2)
 #### read the pre-stored spatial_LDA result (previously run in Python)
 tw_spatial_lda<-read.csv("/Users/xiyupeng/Documents/Research/github/SpaTopic_benchmarking/methods/spatial_lda/train_model/K7_spatial_lda_nanostring_topicweights_v2.csv")
-topic<-paste0("topic",apply(tw_spatial_lda,1,which.max))
+topic<-apply(tw_spatial_lda,1,which.max)
 nano.obj$topic_spatial_LDA<-as.factor(topic)
 ImageDimPlot(nano.obj, fov = "lung5.rep1", group.by = "topic_spatial_LDA", axes = TRUE, 
                            dark.background = T,cols = palatte) + ggtitle("Topic")
@@ -189,18 +190,26 @@ Idents(nano.obj) <- nano.obj$celltype
 whole image
 
 ```{r}
+library(Polychrome)
+nano.obj$niches<-as.factor(nano.obj$niches)
+names(palatte)<-1:7
+palatte_utag<-glasbey.colors(7)
+names(palatte_utag)<--1:5
+palatte_banksy<-glasbey.colors(13)
+names(palatte_banksy)<-0:12
+nano.obj$niches<-as.factor(nano.obj$niches)
 ImageDimPlot(nano.obj, fov = "lung5.rep1", group.by = "Topic", axes = FALSE, 
                            dark.background = F,cols = palatte) + ggtitle("SpatialTopic")
 ImageDimPlot(nano.obj, fov = "lung5.rep1", group.by = "niches",  axes = FALSE, 
                            dark.background = F,cols = palatte) + ggtitle("Seurat v5")
 ImageDimPlot(nano.obj, fov = "lung5.rep1", group.by = "domain_BankSY", axes = FALSE, 
-                           dark.background = F,cols = "glasbey") + ggtitle("BankSY")
+                           dark.background = F,cols = palatte_banksy) + ggtitle("BankSY")
 ImageDimPlot(nano.obj, fov = "lung5.rep1", group.by = "topic_spatial_LDA",axes = FALSE, 
                            dark.background = F,cols = palatte) + ggtitle("Spatial-LDA")
 ImageDimPlot(nano.obj, fov = "lung5.rep1", group.by = "utag_domain",axes = FALSE, 
-                           dark.background = F,cols = "glasbey") + ggtitle("UTAG")
+                           dark.background = F,cols = palatte_utag) + ggtitle("UTAG")
 ImageDimPlot(nano.obj, fov = "lung5.rep1", group.by = "CytoCommunity", axes = FALSE,  
-                           dark.background = F,cols = "glasbey") + ggtitle("CytoCommunity")
+                           dark.background = F,cols = palatte) + ggtitle("CytoCommunity")
 ```
 
 Crop a region (tumor region 1)
@@ -209,12 +218,12 @@ Crop a region (tumor region 1)
 basal.crop <- Crop(nano.obj[["lung5.rep1"]], x = c(160000,170000), y = c(8000,12000))
 nano.obj[["zoom1"]] <- basal.crop
 ImageDimPlot(nano.obj, fov = "zoom1", cols = "glasbey", coord.fixed = FALSE,dark.background = F,size = 1.5,cells = WhichCells(nano.obj, idents = c("Tumor", "Macrophage","B","Smooth Muscle", "CD4 T","Dendritic","Myofibroblast",  "CD14+ Monocyte", "Plasma","CD8 T")))+NoLegend()+ggtitle("Celltype")
-ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5,cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "Topic")+NoLegend()+ggtitle("SpatialTopic")
-ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5, cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "niches")+NoLegend()+ggtitle("Seurat v5")
-ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5, cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "domain_BankSY")+NoLegend()+ ggtitle("BankSY")
-ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5, cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "topic_spatial_LDA")+NoLegend()+ ggtitle("Spatial-LDA")
-ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5, cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "utag_domain")+NoLegend()+ ggtitle("UTAG")
-ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5, cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "CytoCommunity")+NoLegend()+ggtitle("CytoCommunity")
+ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5,cols = palatte, dark.background = F,coord.fixed = FALSE,group.by = "Topic")+NoLegend()+ggtitle("SpatialTopic")
+ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5, cols = palatte, dark.background = F,coord.fixed = FALSE,group.by = "niches")+NoLegend()+ggtitle("Seurat v5")
+ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5, cols = palatte_banksy, dark.background = F,coord.fixed = FALSE,group.by = "domain_BankSY")+NoLegend()+ ggtitle("BankSY")
+ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5, cols = palatte, dark.background = F,coord.fixed = FALSE,group.by = "topic_spatial_LDA")+NoLegend()+ ggtitle("Spatial-LDA")
+ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5, cols = palatte_utag, dark.background = F,coord.fixed = FALSE,group.by = "utag_domain")+NoLegend()+ ggtitle("UTAG")
+ImageDimPlot(nano.obj, fov = "zoom1", size = 1.5, cols = palatte, dark.background = F,coord.fixed = FALSE,group.by = "CytoCommunity")+NoLegend()+ggtitle("CytoCommunity")
 ```
 
 ```{r,fig.height=1.5,fig.height=3.5}
@@ -228,12 +237,12 @@ Crop a region (tumor region 2)
 basal.crop <- Crop(nano.obj[["lung5.rep1"]], x = c(173000,177000), y = c(5000,14000))
 nano.obj[["zoom1b"]] <- basal.crop
 ImageDimPlot(nano.obj, fov = "zoom1b", cols = "glasbey", coord.fixed = FALSE,dark.background = F,size = 1.5,cells = WhichCells(nano.obj, idents = c("Tumor", "Macrophage","B","Smooth Muscle", "CD4 T","Dendritic","Myofibroblast",  "CD14+ Monocyte", "Plasma","CD8 T")))+NoLegend()+ggtitle("Celltype")
-ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5,cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "Topic")+NoLegend()+ggtitle("SpatialTopic")
-ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5, cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "niches")+NoLegend()+ggtitle("Seurat v5")
-ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5, cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "domain_BankSY")+NoLegend()+ ggtitle("BankSY")
-ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5, cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "topic_spatial_LDA")+NoLegend()+ ggtitle("Spatial-LDA")
-ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5, cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "utag_domain")+NoLegend()+ ggtitle("UTAG")
-ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5, cols = "glasbey", dark.background = F,coord.fixed = FALSE,group.by = "CytoCommunity")+NoLegend()+ggtitle("CytoCommunity")
+ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5,cols = palatte, dark.background = F,coord.fixed = FALSE,group.by = "Topic")+NoLegend()+ggtitle("SpatialTopic")
+ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5, cols = palatte, dark.background = F,coord.fixed = FALSE,group.by = "niches")+NoLegend()+ggtitle("Seurat v5")
+ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5, cols = palatte_banksy, dark.background = F,coord.fixed = FALSE,group.by = "domain_BankSY")+NoLegend()+ ggtitle("BankSY")
+ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5, cols = palatte, dark.background = F,coord.fixed = FALSE,group.by = "topic_spatial_LDA")+NoLegend()+ ggtitle("Spatial-LDA")
+ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5, cols = palatte_utag, dark.background = F,coord.fixed = FALSE,group.by = "utag_domain")+NoLegend()+ ggtitle("UTAG")
+ImageDimPlot(nano.obj, fov = "zoom1b", size = 1.5, cols = palatte, dark.background = F,coord.fixed = FALSE,group.by = "CytoCommunity")+NoLegend()+ggtitle("CytoCommunity")
 ```
 
 ```{r,fig.width=4}
@@ -352,4 +361,39 @@ pheatmap::pheatmap(t(m), # Plots the first 10 genes of the dataset
 ```{r,eval=FALSE}
 table(nano.obj$celltype, nano.obj$niches)
 table(nano.obj$celltype, nano.obj$Topic)
+```
+
+CAF spatial subtypes across different topics
+
+```{r cafsubtype,fig.width=10, fig.height=4,warning=FALSE,message = FALSE}
+DefaultAssay(nano.obj) <- "Nanostring"
+Idents(nano.obj)<-"predicted.annotation.l1"
+## gene list from [Liu et al 2025]
+caf_genes <- c("TPM2", "MYH11", "ACTA2", "COL1A1", "TGFB1", "LIF", 
+               "COL12A1", "IL6", "HSPA1A", "CFD", "CXCL2", "ENG", 
+               "C1QB", "CD74", "CXCL12", "HLA-DPB1", "CCL8", "TAP2")
+
+### we only look at CAF
+myofibro_obj <- subset(nano.obj, predicted.annotation.l1 %in% c("Myofibroblast"))
+selected_topics <- c("1", "3", "5", "6", "7")
+myofibro_filtered <- subset(myofibro_obj, Topic %in% selected_topics)
+
+custom_topic_labels <- c(
+  "6" = "Topic6 - s1-CAFs (Tumor adjacent)",
+  "7" = "Topic7 - s2-CAFs (Stromal niche)",
+  "5" = "Topic5 - s2-CAFs (Stromal niche)",
+  "1" = "Topic1 - s3-CAFs (Myeloid niche)",
+  "3" = "Topic3 - s4-CAFs (TLS niche)"
+)
+
+library(ggplot2)
+red_blue_colors <- colorRampPalette(c("blue", "white", "red"))(100)
+DotPlot(myofibro_filtered, features = caf_genes, group.by = "Topic") + 
+  scale_y_discrete(labels = custom_topic_labels) +
+  scale_color_gradientn(colors = red_blue_colors) + 
+  RotatedAxis()+  scale_size_continuous(
+    range = c(0, 8),  # Min and max dot size
+    breaks = c(0, 10, 20, 30, 40, 50, 60, 70),  # Custom breaks
+    limits = c(0, 100)  # Set limits to ensure all breaks are included
+  ) 
 ```
